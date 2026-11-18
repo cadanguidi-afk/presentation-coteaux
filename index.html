@@ -1,0 +1,88 @@
+<!doctype html><html lang="fr"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Coteaux de Rouen : panorama et lecture de paysage</title>
+<style>
+:root{--bg:#e6ece9;--ink:#1c2b24}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0;font:17px/1.45 system-ui,sans-serif;color:var(--ink);background:#111;overflow:hidden}
+button{font:inherit;color:var(--ink);background:#fff;border:1px solid #999;border-radius:6px;padding:9px 14px;min-height:44px}
+button[disabled]{opacity:.35}
+#wait{position:fixed;inset:0;z-index:5;background:var(--bg);display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:24px}
+#wait img{width:min(300px,70vw);height:auto}
+#wait h1{font-size:1.4rem;margin:18px 0 6px}#wait p{margin:2px 0}
+#app{position:fixed;inset:0;display:flex;flex-direction:column}
+#stage{flex:1;min-height:0;display:flex;align-items:center;justify-content:center}
+#slide{position:relative;background:#fff}
+#slide>img{display:block;width:100%;height:100%}
+.spot{position:absolute;padding:0;background:transparent;border:2px dashed #d9923a;border-radius:6px;min-height:0}
+#bar{display:none;gap:8px;justify-content:center;align-items:center;flex-wrap:wrap;padding:8px;background:#ddd;color:var(--ink)}
+#st{position:fixed;left:10px;top:8px;z-index:9;font-size:.85rem;color:#555}
+#pl{position:fixed;right:8px;bottom:6px;z-index:9;min-height:0;padding:3px 8px;font-size:.8rem;background:transparent;border:0;color:#777;text-decoration:underline}
+#lb{position:fixed;inset:0;z-index:20;background:#000;display:none;flex-direction:column}
+#lb.on{display:flex}
+#lbt{display:flex;gap:8px;align-items:center;padding:8px;background:#ddd}#lbt .sp{flex:1}
+#lbv{flex:1;min-height:0;overflow:auto;display:flex;touch-action:pan-x pan-y pinch-zoom}
+#lbv img{margin:auto;max-width:100%;max-height:100%;object-fit:contain}
+#lbv.z img{max-width:none;max-height:none;width:260%}
+</style></head><body>
+<div id="st"></div>
+<div id="wait"><img src="img/logo.jpg" alt="Université de Rouen Normandie">
+<h1>En attente de la diffusion par le groupe 24-5</h1>
+<p>Christlove ADANGUIDI · Nathan AKUMESSI · Jocelyne DOVONOU</p>
+<p>Coteaux de Rouen : panorama et lecture de paysage</p>
+<p>La présentation s’affichera ici automatiquement.</p></div>
+<div id="app"><div id="stage"><div id="slide"></div></div>
+<div id="bar"><button id="prev">‹ Précédent</button><span id="count"></span><button id="next">Suivant ›</button>
+<button id="hold">Mettre en attente</button><button id="quit">Quitter</button></div></div>
+<button id="pl">Présentateur</button>
+<div id="lb" role="dialog" aria-modal="true"><div id="lbt"><button id="lbb">‹ Retour</button><button id="lbp">‹</button><span id="lbc"></span><button id="lbn">›</button><span class="sp"></span><button id="lbz">Zoom</button></div>
+<div id="lbv"><img id="lbi" alt="Photo agrandie"></div></div>
+<script src="config.js"></script><script src="data.js"></script>
+<script>
+const $=id=>document.getElementById(id),N=PAGES.length,LOCAL=!DB_URL;
+let live=LOCAL?1:0,pilot=false,list=[],li=0;
+const sha=async s=>[...new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(s)))].map(b=>b.toString(16).padStart(2,'0')).join('');
+function fit(){const P=PAGES[Math.max(1,live)-1],st=$('stage'),w=Math.min(st.clientWidth,st.clientHeight*P.ratio),s=$('slide');s.style.width=w+'px';s.style.height=w/P.ratio+'px';}
+function draw(){
+  $('wait').style.display=live<1?'flex':'none';$('app').style.visibility=live<1?'hidden':'visible';
+  if(live<1)return;
+  const P=PAGES[live-1],s=$('slide');s.innerHTML='';
+  const im=new Image();im.src=P.img;im.alt='Page '+live+' sur '+N;s.appendChild(im);
+  P.spots.forEach((o,k)=>{const b=document.createElement('button');b.className='spot';
+    b.style.cssText=`left:${o.x}%;top:${o.y}%;width:${o.w}%;height:${o.h}%`;b.setAttribute('aria-label','Agrandir la photo '+(k+1));
+    b.onclick=()=>openLb(P.spots.map(t=>t.img),k);s.appendChild(b);});
+  [live-2,live].forEach(j=>{if(PAGES[j])new Image().src=PAGES[j].img;});
+  $('count').textContent=live+' / '+N;$('prev').disabled=live<=1;$('next').disabled=live>=N;fit();
+}
+async function push(n){live=n;draw();if(LOCAL)return;
+  try{await fetch(DB_URL+'/live.json',{method:'PUT',body:JSON.stringify({page:n,t:Date.now()})});$('st').textContent='';}
+  catch(e){$('st').textContent='Envoi impossible : vérifiez la connexion.';}}
+function setPilot(v){pilot=v;$('bar').style.display=v?'flex':'none';$('pl').style.display=v?'none':'';if(v&&live<1){live=0;}fit();}
+function listen(){const es=new EventSource(DB_URL+'/live.json');
+  es.addEventListener('put',e=>{const d=JSON.parse(e.data);
+    if(d.path==='/')live=(d.data&&d.data.page)||0;else if(d.path==='/page')live=d.data||0;else return;draw();$('st').textContent='';});
+  es.addEventListener('patch',e=>{const d=JSON.parse(e.data);if(d.data&&d.data.page!==undefined){live=d.data.page;draw();}});
+  es.onopen=()=>{$('st').textContent='';};es.onerror=()=>{$('st').textContent='Reconnexion…';};}
+function openLb(l,i){list=l;li=i;$('lb').classList.add('on');upd();}
+function upd(){$('lbi').src=list[li];$('lbv').classList.remove('z');$('lbc').textContent=list.length>1?(li+1)+' / '+list.length:'';
+  $('lbp').style.display=$('lbn').style.display=list.length>1?'':'none';$('lbv').scrollTo(0,0);}
+function zoom(){const v=$('lbv');v.classList.toggle('z');if(v.classList.contains('z'))requestAnimationFrame(()=>{v.scrollLeft=(v.scrollWidth-v.clientWidth)/2;v.scrollTop=(v.scrollHeight-v.clientHeight)/2;});}
+$('lbb').onclick=()=>$('lb').classList.remove('on');$('lbz').onclick=$('lbi').onclick=zoom;
+$('lbp').onclick=()=>{li=(li-1+list.length)%list.length;upd();};$('lbn').onclick=()=>{li=(li+1)%list.length;upd();};
+$('prev').onclick=()=>push(Math.max(1,live-1));$('next').onclick=()=>push(Math.min(N,live+1));
+$('hold').onclick=()=>push(0);$('quit').onclick=()=>{setPilot(false);try{localStorage.removeItem('p24')}catch(e){}};
+$('pl').onclick=async()=>{
+  if(!PIN_HASH){alert('Le code présentateur n’est pas encore configuré.');return;}
+  const p=prompt('Code présentateur');if(!p)return;
+  let h='';try{h=await sha(p);}catch(e){alert('Ouvrez la page en https pour utiliser le code.');return;}
+  if(h===PIN_HASH){try{localStorage.setItem('p24','1')}catch(e){}setPilot(true);if(live<1)push(1);}else alert('Code incorrect.');};
+document.addEventListener('keydown',e=>{
+  if($('lb').classList.contains('on')){if(e.key==='Escape')$('lbb').click();return;}
+  if(!pilot)return;if(e.key==='ArrowRight')$('next').click();else if(e.key==='ArrowLeft')$('prev').click();});
+let sx=null;$('stage').addEventListener('touchstart',e=>{sx=e.touches[0].clientX},{passive:true});
+$('stage').addEventListener('touchend',e=>{if(sx===null||!pilot)return;const d=e.changedTouches[0].clientX-sx;sx=null;if(Math.abs(d)>70)(d<0?$('next'):$('prev')).click();},{passive:true});
+window.addEventListener('resize',fit);
+let saved=false;try{saved=localStorage.getItem('p24')==='1'&&!!PIN_HASH}catch(e){}
+if(LOCAL){$('st').textContent='Mode test : aucune diffusion';setPilot(true);$('pl').style.display='none';}else{if(saved)setPilot(true);listen();}
+draw();
+</script></body></html>
